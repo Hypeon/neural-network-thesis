@@ -5,10 +5,12 @@ import org.datavec.api.records.reader.RecordReader;
 import org.datavec.api.records.reader.impl.csv.CSVRecordReader;
 import org.datavec.api.transform.TransformProcess;
 import org.datavec.api.transform.schema.Schema;
+import org.datavec.api.transform.transform.time.DeriveColumnsFromTimeTransform;
 import org.datavec.api.writable.Writable;
 import org.datavec.spark.transform.SparkTransformExecutor;
 import org.datavec.spark.transform.misc.StringToWritablesFunction;
 import org.datavec.spark.transform.misc.WritablesToStringFunction;
+import org.joda.time.DateTimeFieldType;
 import org.joda.time.DateTimeZone;
 
 import java.util.HashMap;
@@ -34,7 +36,13 @@ public class DataPreprocessor {
             .removeColumns("Price","Open","High","Low","Vol.")
             .replaceStringTransform("DateString", mapping )
             .stringToTimeTransform("DateString", "MM dd yyyy", DateTimeZone.UTC)
-            .renameColumn("DateString", "Date")
+            .renameColumn("DateString", "MsSince1970")
+            .transform(new DeriveColumnsFromTimeTransform.Builder("MsSince1970")
+                            .addIntegerDerivedColumn("Day", DateTimeFieldType.dayOfMonth())
+                            .addIntegerDerivedColumn("Month", DateTimeFieldType.monthOfYear())
+                            .addIntegerDerivedColumn("Year", DateTimeFieldType.year())
+                            .build())
+            .removeColumns("MsSince1970")
             .build();
 
         Schema outputSchema = tp.getFinalSchema();
@@ -54,7 +62,7 @@ public class DataPreprocessor {
         JavaRDD<List<Writable>> parsedInputData = stringData.map(new StringToWritablesFunction(rr));
         JavaRDD<List<Writable>> processedData = SparkTransformExecutor.execute(parsedInputData, tp);
         JavaRDD<String> processedAsString = processedData.map(new WritablesToStringFunction(","));
-        processedAsString.saveAsTextFile("./src/main/resources/BTC_USD_processed_data"
+        processedAsString.saveAsTextFile("./src/main/resources/BTC_USD_processed_"
                                          + System.currentTimeMillis() + ".csv");
 
         System.out.println("------ Data processing COMPLETED ------");
